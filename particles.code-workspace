@@ -1,0 +1,199 @@
+{
+  /* ----------------------- */
+  /* --- Folders Section --- */
+  /* ----------------------- */
+  "folders": [
+    {
+      "name": "Particles Source",
+      "path": "src",
+    },
+    {
+      "name": "Public",
+      "path": "public",
+    },
+    {
+      "name": "(Additional Files)",
+      "path": ".",
+    }
+  ],
+  /* ------------------------ */
+  /* --- Settings Section --- */
+  /* ------------------------ */
+  "settings": {
+    // Editor Basics
+    "editor.detectIndentation": true,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 2,
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    // Clean Explorer: Hide Things we don't care about
+    "files.exclude": {
+      ".git": true,
+      "dist": false, // sometimes useful to see, hide when not necessary
+      "node_modules": true, // only clutter
+      "*eslint*": true,
+      ".gitignore": true,
+      "*lock.json": true,
+      "*.lock": true,
+      "*.log": true,
+      "src": true,
+      "public": true,
+    },
+    // TypeScript Settings
+    "typescript.preferences.importModuleSpecifier": "project-relative",
+    "typescript.preferences.quoteStyle": "double",
+    "typescript.suggest.autoImports": false,
+    "typescript.suggest.paths": true,
+    "typescript.updateImportsOnFileMove.enabled": "never",
+    "typescript.format.insertSpaceAfterCommaDelimiter": true,
+    "typescript.format.insertSpaceAfterSemicolonInForStatements": true,
+    "typescript.format.insertSpaceBeforeAndAfterBinaryOperators": true,
+    "typescript.format.insertSpaceAfterKeywordsInControlFlowStatements": true,
+    "typescript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": true,
+    "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis": false,
+    "typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+    "typescript.format.insertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces": false,
+    "typescript.format.insertSpaceAfterOpeningAndBeforeClosingJsxExpressionBraces": false,
+    "typescript.format.placeOpenBraceOnNewLineForFunctions": false,
+    "typescript.format.placeOpenBraceOnNewLineForControlBlocks": false,
+    // JavaScript Settings
+    "javascript.preferences.importModuleSpecifier": "project-relative",
+    "javascript.preferences.quoteStyle": "double",
+    "javascript.format.insertSpaceAfterCommaDelimiter": true,
+    "javascript.format.insertSpaceAfterSemicolonInForStatements": true,
+    "javascript.format.insertSpaceBeforeAndAfterBinaryOperators": true,
+    "javascript.format.insertSpaceAfterKeywordsInControlFlowStatements": true,
+    "javascript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": true,
+    "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis": false,
+    "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+    "javascript.format.insertSpaceAfterOpeningAndBeforeClosingTemplateStringBraces": false,
+    "javascript.format.insertSpaceAfterOpeningAndBeforeClosingJsxExpressionBraces": false,
+    "javascript.format.placeOpenBraceOnNewLineForFunctions": false,
+    "javascript.format.placeOpenBraceOnNewLineForControlBlocks": false,
+    // TODO Tree Settings
+    "todo-tree.general.tags": [
+      "BUG",
+      "HACK",
+      "FIXME",
+      "TODO",
+      "XXX",
+      "[ ]",
+      "[x]",
+      "DEBUG",
+      "README",
+      "HINT",
+    ],
+    "todo-tree.highlights.customHighlight": {
+      "BUG": {
+        "icon": "bug",
+        "background": "#FF0000",
+        "foreground": "#FFFFFF",
+      },
+      "HACK": {
+        "icon": "tools",
+      },
+      "FIXME": {
+        "icon": "flame",
+      },
+      "TODO": {
+        "icon": "check",
+        "background": "#FFAF33",
+        "foreground": "#000000",
+        "type": "text",
+      },
+      "XXX": {
+        "icon": "x",
+      },
+      "[ ]": {
+        "icon": "issue-draft",
+      },
+      "[x]": {
+        "icon": "issue-closed",
+      },
+      "DEBUG": {
+        "icon": "beaker",
+        "background": "#0000FF",
+        "foreground": "#FFFFFF",
+        "type": "whole-line",
+      },
+      "README": {
+        "icon": "book",
+        "type": "text",
+        "foreground": "#00FF00",
+      },
+      "HINT": {
+        "icon": "light-bulb",
+        "type": "text",
+        "foreground": "#00FFFF",
+      },
+    },
+  },
+  /* ---------------------- */
+  /* --- Launch Section --- */
+  /* ---------------------- */
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Particles",
+        "type": "chrome",
+        "request": "launch",
+        "preLaunchTask": "Start Vite Server",
+        "url": "http://localhost:2122",
+        "webRoot": "${workspaceFolder}",
+        "sourceMaps": true,
+        "skipFiles": [
+          "<node_internals>/**",
+          "**/node_modules/**",
+        ],
+        "presentation": {
+          "hidden": false,
+          "group": "Debug",
+          "order": 1,
+        },
+      },
+    ],
+    "compounds": [],
+  },
+  /* --------------------- */
+  /* --- Tasks Section --- */
+  /* --------------------- */
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Start Vite Server",
+        "type": "process",
+        "command": "yarn",
+        "windows": {
+          "command": "yarn.cmd"
+        },
+        "args": [
+          "--cwd",
+          "${workspaceFolder}",
+          "dev",
+        ],
+        "isBackground": true,
+        // Vite Dev Server Problem Matcher
+        "problemMatcher": {
+          "owner": "vite",
+          "pattern": {
+            "regexp": "^$"
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "VITE",
+            "endsPattern": "ready"
+          },
+        },
+        "presentation": {
+          "reveal": "silent",
+          "panel": "shared",
+          "group": "none",
+        },
+        "promptOnClose": false,
+      },
+    ],
+  },
+}

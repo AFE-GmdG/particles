@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <base href="/" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1f1f1f">
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <title>Testprojekt: WebGPU Particle System</title>
+  <link href="/assets/favicon.ico" rel="shortcut icon" type="image/x-icon" />
+  <script type="module" src="/src/app.ts"></script>
+
+  <style>
+    :root {
+      --color-primary: #e0e0e0;
+      --color-background: #1f1f1f;
+    }
+
+    html {
+      height: 100%;
+      user-select: none;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 16px;
+      background-color: var(--color-background);
+      color: var(--color-primary);
+    }
+
+    body {
+      position: relative;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    #canvas {
+      width: 100vw;
+      height: 100vh;
+      background-color: #1c1c1c;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="canvas"></canvas>
+</body>
+
+</html>

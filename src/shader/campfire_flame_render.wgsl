@@ -8,14 +8,18 @@ struct Particle {
   lifetime: f32,
 };
 
-struct Uniforms {
-  view: mat4x4<f32>,
-  projection: mat4x4<f32>,
+struct ModelUniforms {
   model: mat4x4<f32>,
 };
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-@group(1) @binding(0) var<storage, read> particles: array<Particle>;
+struct ViewProjUniforms {
+  view: mat4x4<f32>,
+  projection: mat4x4<f32>,
+};
+
+@group(0) @binding(0) var<uniform> modelUniforms: ModelUniforms;
+@group(1) @binding(0) var<uniform> viewProjUniforms: ViewProjUniforms;
+@group(2) @binding(0) var<storage, read> particles: array<Particle>;
 
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
@@ -47,17 +51,17 @@ struct VertexOutput {
 
   // Quad-Größe abhängig von verbleibender Lebenszeit
   // Flammen sind anfangs klein und werden während des Aufstiegs größer
-  let quadSize = 0.15 + 0.45 * life;
+  let quadSize = 0.5 + 0.05 * life;
   let uv = quadVertices[vertexIndex];
   let quadVertex = uv * quadSize;
 
   // Partikelposition mit Model-Matrix transformieren (für mehrere Lagerfeuerstellen)
-  let worldPos = uniforms.model * vec4<f32>(particle.position, 1.0);
+  let worldPos = modelUniforms.model * vec4<f32>(particle.position, 1.0);
 
   // Billboard: Offset im View-Space, damit das Quad immer zur Kamera zeigt
-  let viewPos = uniforms.view * worldPos;
+  let viewPos = viewProjUniforms.view * worldPos;
   let billboardPos = viewPos + vec4<f32>(quadVertex, 0.0, 0.0);
-  let clipPos = uniforms.projection * billboardPos;
+  let clipPos = viewProjUniforms.projection * billboardPos;
 
   // Farbverlauf für Flammen: Gelb → Orange → dunkles Rot
   // life = 1.0 (jung): Gelb

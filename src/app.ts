@@ -1,12 +1,15 @@
 import { humanReadableSize, unknownToError, validateShaderModule } from "./common";
+
 import Matrix4 from "./math/matrix4";
-import { deg2rad } from "./math/utils";
+import Quaternion from "./math/quaternion";
 import Vector3 from "./math/vector3";
+import { deg2rad } from "./math/utils";
 
 import floorModule from "./shader/floor.wgsl?raw";
 import particleSimModule from "./shader/particle_sim.wgsl?raw";
 import particleRenderModule from "./shader/particle_render.wgsl?raw";
 import campfireFlameSimModule from "./shader/campfire_flame_sim.wgsl?raw";
+import campfireFlameRenderModule from "./shader/campfire_flame_render.wgsl?raw";
 
 const PARTICLE_1_COUNT = 8192;
 const PARTICLE_2_COUNT = 2048;
@@ -61,13 +64,23 @@ type GpuContext = {
 
   // Particles (#2: Flammen-Effekt)
   particle2Buffer: GPUBuffer;
-  particle2SimParamsBuffer: GPUBuffer;
-  particle2SimParamsData: Float32Array;
   particle2SimConfigBuffer: GPUBuffer;
   particle2SimConfigData: Float32Array;
   particle2SimBindGroupLayout: GPUBindGroupLayout;
   particle2SimBindGroup: GPUBindGroup;
   particle2SimPipeline: GPUComputePipeline;
+  // Das Lagerfeuer wird 3x gerendert, nutzt aber immer dieselbe Berechnung (Sim) und
+  // das selbe BindGroupLayout. Lediglich die Model-Matrix (group(0)) ändert sich für
+  // die verschiedenen Lagerfeuerstellen.
+  particle2RenderBindGroup0Layout: GPUBindGroupLayout;
+  campfire1RenderBindGroup0: GPUBindGroup;
+  campfire2RenderBindGroup0: GPUBindGroup;
+  campfire3RenderBindGroup0: GPUBindGroup;
+  // particle2RenderBindGroup1(Layout) ist die View-Projection-Matrix.
+  // Diese hat eine eigene BindGroup und BindGroupLayout weiter oben.
+  particle2RenderBindGroup2Layout: GPUBindGroupLayout;
+  particle2RenderBindGroup2: GPUBindGroup;
+  particle2RenderPipeline: GPURenderPipeline;
 };
 
 const context: GpuContext = {} as GpuContext;
@@ -211,7 +224,7 @@ function initializeViewProjectionMatrix() {
     label: "View-Projection Matrix Bind Group Layout",
     entries: [{
       binding: 0,
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT | GPUShaderStage.COMPUTE,
+      visibility: GPUShaderStage.VERTEX,
       buffer: {
         type: "uniform",
         hasDynamicOffset: false,
@@ -504,7 +517,7 @@ async function initializeParticles1() {
     label: "Particle 1 Render Bind Group Layout",
     entries: [{
       binding: 0,
-      visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      visibility: GPUShaderStage.VERTEX,
       buffer: {
         type: "read-only-storage",
         hasDynamicOffset: false,
@@ -530,7 +543,7 @@ async function initializeParticles1() {
     label: "Particle 1 Render Pipeline Layout",
     bindGroupLayouts: [
       context.viewProjectionMatrixBindGroupLayout, // group(0)
-      particle1RenderBindGroupLayout,               // group(1)
+      particle1RenderBindGroupLayout,              // group(1)
     ],
   });
 
@@ -617,29 +630,26 @@ async function initializeParticles2() {
   }
   particle2Buffer.unmap();
 
-  // --- SimParams Uniform-Buffer ---
-  // deltaTime(f32) + time(f32) + seed(u32) + particleCount(u32) = 16 bytes
-  const particle2SimParamsData = new Float32Array(4);
-  const particle2SimParamsBuffer = context.device.createBuffer({
-    label: "Particle 2 Sim Params Buffer",
-    size: 16,
-    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-  });
-
   // --- SimConfig Uniform-Buffer ---
-  // buoyancy(f32) + drag(f32) + spawnRadius(f32) + spawnHeight(f32) = 16 bytes
-  const particle2SimConfigData = new Float32Array(4);
+  // deltaTime(f32) + time(f32) + seed(u32) + particleCount(u32)
+  // + buoyancy(f32) + drag(f32) + spawnRadius(f32) + spawnHeight(f32)
+  // = 32 Bytes
+  const particle2SimConfigData = new Float32Array(8);
   const particle2SimConfigBuffer = context.device.createBuffer({
     label: "Particle 2 Sim Config Buffer",
-    size: 16,
+    size: 32,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     mappedAtCreation: true,
   });
 
-  particle2SimConfigData[0] = 45.0; // buoyancy
-  particle2SimConfigData[1] = 2.5; // drag
-  particle2SimConfigData[2] = 1.5; // spawnRadius
-  particle2SimConfigData[3] = 0.5; // spawnHeight
+  particle2SimConfigData[0] = 0; // deltaTIme
+  particle2SimConfigData[1] = 0; // time
+  particle2SimConfigData[2] = 0; // seed
+  particle2SimConfigData[3] = 0; // particleCount
+  particle2SimConfigData[4] = 45.0; // buoyancy
+  particle2SimConfigData[5] = 2.5; // drag
+  particle2SimConfigData[6] = 1.5; // spawnRadius
+  particle2SimConfigData[7] = 0.5; // spawnHeight
 
   const simConfigMapping = new Float32Array(particle2SimConfigBuffer.getMappedRange());
   simConfigMapping.set(particle2SimConfigData);
@@ -660,7 +670,7 @@ async function initializeParticles2() {
       buffer: {
         type: "uniform",
         hasDynamicOffset: false,
-        minBindingSize: particle2SimParamsData.byteLength,
+        minBindingSize: particle2SimConfigData.byteLength,
       },
     }, {
       binding: 1,
@@ -679,9 +689,9 @@ async function initializeParticles2() {
     entries: [{
       binding: 0,
       resource: {
-        buffer: particle2SimParamsBuffer,
+        buffer: particle2SimConfigBuffer,
         offset: 0,
-        size: particle2SimParamsData.byteLength,
+        size: particle2SimConfigData.byteLength,
       },
     }, {
       binding: 1,
@@ -707,13 +717,257 @@ async function initializeParticles2() {
     },
   });
 
+  // --- Render Pipeline (Partikel zeichnen) ---
+  const renderShaderModule = context.device.createShaderModule({
+    label: "Particle 2 Render Shader Module",
+    code: campfireFlameRenderModule,
+  });
+  await validateShaderModule(renderShaderModule);
+
+  const campfire1MatrixBuffer = context.device.createBuffer({
+    label: "Campfire 1 Model Matrix Buffer",
+    size: 64, // 16 floats * 4 bytes pro float
+    usage: GPUBufferUsage.UNIFORM,
+    mappedAtCreation: true,
+  });
+  const campfire2MatrixBuffer = context.device.createBuffer({
+    label: "Campfire 2 Model Matrix Buffer",
+    size: 64, // 16 floats * 4 bytes pro float
+    usage: GPUBufferUsage.UNIFORM,
+    mappedAtCreation: true,
+  });
+  const campfire3MatrixBuffer = context.device.createBuffer({
+    label: "Campfire 3 Model Matrix Buffer",
+    size: 64, // 16 floats * 4 bytes pro float
+    usage: GPUBufferUsage.UNIFORM,
+    mappedAtCreation: true,
+  });
+
+  const modelMatrix = new Matrix4();
+  const position = new Vector3(50, 0, 0);
+  const rotation = new Quaternion();
+  const scale = new Vector3(1, 1, 1);
+  const up = new Vector3(0, 1, 0);
+  modelMatrix.compose(position, rotation, scale);
+
+  let modelMapping = new Float32Array(campfire1MatrixBuffer.getMappedRange());
+  modelMapping[0x0] = modelMatrix.m11;
+  modelMapping[0x1] = modelMatrix.m12;
+  modelMapping[0x2] = modelMatrix.m13;
+  modelMapping[0x3] = modelMatrix.m14;
+
+  modelMapping[0x4] = modelMatrix.m21;
+  modelMapping[0x5] = modelMatrix.m22;
+  modelMapping[0x6] = modelMatrix.m23;
+  modelMapping[0x7] = modelMatrix.m24;
+
+  modelMapping[0x8] = modelMatrix.m31;
+  modelMapping[0x9] = modelMatrix.m32;
+  modelMapping[0xa] = modelMatrix.m33;
+  modelMapping[0xb] = modelMatrix.m34;
+
+  modelMapping[0xc] = modelMatrix.m41;
+  modelMapping[0xd] = modelMatrix.m42;
+  modelMapping[0xe] = modelMatrix.m43;
+  modelMapping[0xf] = modelMatrix.m44;
+  campfire1MatrixBuffer.unmap();
+
+  position.set(-50, 0, 0);
+  rotation.setFromAxisAngle(up, deg2rad(-20));
+  modelMatrix.compose(position, rotation, scale);
+
+  modelMapping = new Float32Array(campfire2MatrixBuffer.getMappedRange());
+  modelMapping[0x0] = modelMatrix.m11;
+  modelMapping[0x1] = modelMatrix.m12;
+  modelMapping[0x2] = modelMatrix.m13;
+  modelMapping[0x3] = modelMatrix.m14;
+
+  modelMapping[0x4] = modelMatrix.m21;
+  modelMapping[0x5] = modelMatrix.m22;
+  modelMapping[0x6] = modelMatrix.m23;
+  modelMapping[0x7] = modelMatrix.m24;
+
+  modelMapping[0x8] = modelMatrix.m31;
+  modelMapping[0x9] = modelMatrix.m32;
+  modelMapping[0xa] = modelMatrix.m33;
+  modelMapping[0xb] = modelMatrix.m34;
+
+  modelMapping[0xc] = modelMatrix.m41;
+  modelMapping[0xd] = modelMatrix.m42;
+  modelMapping[0xe] = modelMatrix.m43;
+  modelMapping[0xf] = modelMatrix.m44;
+  campfire2MatrixBuffer.unmap();
+
+  position.set(50, 0, 0);
+  rotation.setFromAxisAngle(up, deg2rad(30));
+  scale.set(2, 2, 2);
+  modelMatrix.compose(position, rotation, scale);
+
+  modelMapping = new Float32Array(campfire3MatrixBuffer.getMappedRange());
+  modelMapping[0x0] = modelMatrix.m11;
+  modelMapping[0x1] = modelMatrix.m12;
+  modelMapping[0x2] = modelMatrix.m13;
+  modelMapping[0x3] = modelMatrix.m14;
+
+  modelMapping[0x4] = modelMatrix.m21;
+  modelMapping[0x5] = modelMatrix.m22;
+  modelMapping[0x6] = modelMatrix.m23;
+  modelMapping[0x7] = modelMatrix.m24;
+
+  modelMapping[0x8] = modelMatrix.m31;
+  modelMapping[0x9] = modelMatrix.m32;
+  modelMapping[0xa] = modelMatrix.m33;
+  modelMapping[0xb] = modelMatrix.m34;
+
+  modelMapping[0xc] = modelMatrix.m41;
+  modelMapping[0xd] = modelMatrix.m42;
+  modelMapping[0xe] = modelMatrix.m43;
+  modelMapping[0xf] = modelMatrix.m44;
+  campfire3MatrixBuffer.unmap();
+
+  const particle2RenderBindGroup0Layout = context.device.createBindGroupLayout({
+    label: "Particle 2 Render Bind Group 0 Layout",
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX,
+      buffer: {
+        type: "uniform",
+        hasDynamicOffset: false,
+        minBindingSize: 64, // Größe einer Model-Matrix (4x4 floats)
+      },
+    }],
+  });
+
+  const campfire1RenderBindGroup0 = context.device.createBindGroup({
+    label: "Campfire 1 Model Render Bind Group",
+    layout: particle2RenderBindGroup0Layout,
+    entries: [{
+      binding: 0,
+      resource: {
+        buffer: campfire1MatrixBuffer,
+        offset: 0,
+        size: 64,
+      },
+    }],
+  });
+
+  const campfire2RenderBindGroup0 = context.device.createBindGroup({
+    label: "Campfire 2 Model Render Bind Group",
+    layout: particle2RenderBindGroup0Layout,
+    entries: [{
+      binding: 0,
+      resource: {
+        buffer: campfire2MatrixBuffer,
+        offset: 0,
+        size: 64,
+      },
+    }],
+  });
+
+  const campfire3RenderBindGroup0 = context.device.createBindGroup({
+    label: "Campfire 3 Model Render Bind Group",
+    layout: particle2RenderBindGroup0Layout,
+    entries: [{
+      binding: 0,
+      resource: {
+        buffer: campfire3MatrixBuffer,
+        offset: 0,
+        size: 64,
+      },
+    }],
+  });
+
+  const particle2RenderBindGroup2Layout = context.device.createBindGroupLayout({
+    label: "Particle 2 Render Bind Group 2 Layout",
+    entries: [{
+      binding: 0,
+      visibility: GPUShaderStage.VERTEX,
+      buffer: {
+        type: "read-only-storage",
+        hasDynamicOffset: false,
+        minBindingSize: particle2BufferSize,
+      },
+    }],
+  });
+
+  const particle2RenderBindGroup2 = context.device.createBindGroup({
+    label: "Particle 2 Render Bind Group 2",
+    layout: particle2RenderBindGroup2Layout,
+    entries: [{
+      binding: 0,
+      resource: {
+        buffer: particle2Buffer,
+        offset: 0,
+        size: particle2BufferSize,
+      },
+    }],
+  });
+
+  const renderPipelineLayout = context.device.createPipelineLayout({
+    label: "Particle 2 Render Pipeline Layout",
+    bindGroupLayouts: [
+      particle2RenderBindGroup0Layout,             // group(0): Model-Matrix für das jeweilige Lagerfeuer
+      context.viewProjectionMatrixBindGroupLayout, // group(1): View-Projection-Matrix (gemeinsam für alle Partikel)
+      particle2RenderBindGroup2Layout,             // group(2): Particle-Buffer mit Positionen und Lebenszeiten
+    ],
+  });
+
+  const particle2RenderPipeline = context.device.createRenderPipeline({
+    label: "Particle 2 Render Pipeline",
+    layout: renderPipelineLayout,
+    vertex: {
+      module: renderShaderModule,
+      entryPoint: "vs",
+      buffers: [], // Keine Vertex-Buffer, alles über Storage-Buffer + Instancing
+    },
+    fragment: {
+      module: renderShaderModule,
+      entryPoint: "fs",
+      targets: [{
+        format: navigator.gpu.getPreferredCanvasFormat(),
+        blend: {
+          // Additives Blending für einen leuchtenden Effekt
+          color: {
+            srcFactor: "src-alpha",
+            dstFactor: "one",
+            operation: "add",
+          },
+          alpha: {
+            srcFactor: "one",
+            dstFactor: "one",
+            operation: "add",
+          },
+        },
+      }],
+    },
+    primitive: {
+      topology: "triangle-list",
+      cullMode: "none",
+    },
+    depthStencil: {
+      format: "depth32float",
+      depthWriteEnabled: false, // Transparente Partikel schreiben nicht in den Depth-Buffer
+      depthCompare: "less",
+    },
+    multisample: {
+      count: 1,
+    },
+  });
+
   return {
     particle2Buffer,
-    particle2SimParamsBuffer,
-    particle2SimParamsData,
+    particle2SimConfigData,
+    particle2SimConfigBuffer,
     particle2SimBindGroupLayout,
     particle2SimBindGroup,
     particle2SimPipeline,
+    particle2RenderBindGroup0Layout,
+    campfire1RenderBindGroup0,
+    campfire2RenderBindGroup0,
+    campfire3RenderBindGroup0,
+    particle2RenderBindGroup2Layout,
+    particle2RenderBindGroup2,
+    particle2RenderPipeline,
   };
 }
 
@@ -894,14 +1148,31 @@ function updateParticles(deltaTime: number) {
   // SimParams aktualisieren
   const simParamsView = new DataView(context.particle1SimParamsData.buffer);
   simParamsView.setFloat32(0, deltaTime / 1000, true);   // deltaTime in Sekunden
-  simParamsView.setFloat32(4, now / 1000, true);          // time in Sekunden
-  simParamsView.setUint32(8, (now * 1000) | 0, true);     // seed (pseudo-random)
-  simParamsView.setUint32(12, PARTICLE_1_COUNT, true); // particleCount
+  simParamsView.setFloat32(4, now / 1000, true);         // time in Sekunden
+  simParamsView.setUint32(8, (now * 1000) | 0, true);    // seed (pseudo-random)
+  simParamsView.setUint32(12, PARTICLE_1_COUNT, true);   // particleCount
 
   context.device.queue.writeBuffer(
     context.particle1SimParamsBuffer,
     0,
     context.particle1SimParamsData.buffer,
+  );
+
+  // SimConfig für Partikel 2 aktualisieren
+  const simConfigView = new DataView(context.particle2SimConfigData.buffer);
+  simConfigView.setFloat32(0, deltaTime / 1000, true);   // deltaTime in Sekunden
+  simConfigView.setFloat32(4, now / 1000, true);         // time in Sekunden
+  simConfigView.setUint32(8, (now * 1000) | 0, true);    // seed (pseudo-random)
+  simConfigView.setUint32(12, PARTICLE_2_COUNT, true);   // particleCount
+  simConfigView.setFloat32(16, 1.0, true);               // buoyancy
+  simConfigView.setFloat32(20, 0.25, true);              // drag
+  simConfigView.setFloat32(24, 15, true);                // spawnRadius
+  simConfigView.setFloat32(28, 5, true);                 // spawnHeight
+
+  context.device.queue.writeBuffer(
+    context.particle2SimConfigBuffer,
+    0,
+    context.particle2SimConfigData.buffer,
   );
 }
 
@@ -930,6 +1201,14 @@ function renderFrame() {
   computePass.setBindGroup(0, context.particle1SimBindGroup);
   computePass.dispatchWorkgroups(Math.ceil(PARTICLE_1_COUNT / 256));
   computePass.end();
+
+  const computePass2 = commandEncoder.beginComputePass({
+    label: "Particle Sim Compute Pass",
+  });
+  computePass2.setPipeline(context.particle2SimPipeline);
+  computePass2.setBindGroup(0, context.particle2SimBindGroup);
+  computePass2.dispatchWorkgroups(Math.ceil(PARTICLE_2_COUNT / 256));
+  computePass2.end();
 
   // --- Render Pass: Floor + Partikel ---
   const canvasView = context.canvasContext.getCurrentTexture().createView();
@@ -961,6 +1240,21 @@ function renderFrame() {
   renderPass.setBindGroup(0, context.viewProjectionMatrixBindGroup);
   renderPass.setBindGroup(1, context.particle1RenderBindGroup);
   renderPass.draw(6, PARTICLE_1_COUNT, 0, 0);
+
+  // Partikel 2 (Lagerfeuer 1) zeichnen (instanced: 6 Vertices pro Quad, N Instanzen)
+  renderPass.setPipeline(context.particle2RenderPipeline);
+  renderPass.setBindGroup(0, context.campfire1RenderBindGroup0);
+  renderPass.setBindGroup(1, context.viewProjectionMatrixBindGroup);
+  renderPass.setBindGroup(2, context.particle2RenderBindGroup2);
+  renderPass.draw(6, PARTICLE_2_COUNT, 0, 0);
+
+  // Partikel 2 (Lagerfeuer 2) zeichnen (instanced: 6 Vertices pro Quad, N Instanzen)
+  renderPass.setBindGroup(0, context.campfire2RenderBindGroup0);
+  renderPass.draw(6, PARTICLE_2_COUNT, 0, 0);
+
+  // Partikel 2 (Lagerfeuer 3) zeichnen (instanced: 6 Vertices pro Quad, N Instanzen)
+  renderPass.setBindGroup(0, context.campfire3RenderBindGroup0);
+  renderPass.draw(6, PARTICLE_2_COUNT, 0, 0);
 
   renderPass.end();
 

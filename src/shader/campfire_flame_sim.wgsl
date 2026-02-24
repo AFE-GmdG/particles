@@ -1,10 +1,14 @@
 // Lagerfeur-Flammen-Simulationsshader (Compute)
 
-struct SimParams {
+struct SimConfig {
   deltaTime: f32,
   time: f32,
   seed: u32,
   particleCount: u32,
+  buoyancy: f32,      // 45.0 m/s²
+  drag: f32,          // 2.5
+  spawnRadius: f32,   // 1.5
+  spawnHeight: f32,   // 0.5
 };
 
 struct Particle {
@@ -14,16 +18,8 @@ struct Particle {
   lifetime: f32,
 };
 
-struct SimConfig {
-  buoyancy: f32,      // 45.0 m/s²
-  drag: f32,          // 2.5
-  spawnRadius: f32,   // 1.5
-  spawnHeight: f32,   // 0.5
-};
-
-@group(0) @binding(0) var<uniform> params: SimParams;
+@group(0) @binding(0) var<uniform> config: SimConfig;
 @group(0) @binding(1) var<storage, read_write> particles: array<Particle>;
-@group(1) @binding(0) var<uniform> config: SimConfig;
 
 // Pseudo-Zufallszahl basierend auf einem Seed (Hash-Funktion)
 fn hash(seed: u32) -> u32 {
@@ -48,7 +44,7 @@ fn randomRange(seed: u32, minVal: f32, maxVal: f32) -> f32 {
 @compute @workgroup_size(256)
 fn simulate(@builtin(global_invocation_id) id: vec3<u32>) {
   let index = id.x;
-  if (index >= params.particleCount) {
+  if (index >= config.particleCount) {
     return;
   }
 
@@ -56,7 +52,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3<u32>) {
 
   if (particle.age >= particle.lifetime) {
     // Partikel ist tot → am Ursprung in Spawnzone neu spawnen
-    let seed = index * 11u + params.seed;
+    let seed = index * 11u + config.seed;
 
     // Zylindisches Spawnmuster: Zufälliger Punkt in Kreis mit Radius SPAWN_RADIUS
     let spawnAngle = randomRange(seed, 0.0, 6.28318530718);
@@ -83,16 +79,16 @@ fn simulate(@builtin(global_invocation_id) id: vec3<u32>) {
     particle.lifetime = randomRange(seed + 5u, 0.5, 1.0);
   } else {
     // Auftrieb anwenden (Flammen steigen auf)
-    particle.velocity.y += config.buoyancy * params.deltaTime;
+    particle.velocity.y += config.buoyancy * config.deltaTime;
 
     // Luftwiderstand anwenden (Geschwindigkeit wird über Zeit gedämpft)
-    particle.velocity *= (1.0 - config.drag * params.deltaTime);
+    particle.velocity *= (1.0 - config.drag * config.deltaTime);
 
     // Position aktualisieren
-    particle.position += particle.velocity * params.deltaTime;
+    particle.position += particle.velocity * config.deltaTime;
 
     // Alter erhöhen
-    particle.age += params.deltaTime;
+    particle.age += config.deltaTime;
   }
 
   particles[index] = particle;

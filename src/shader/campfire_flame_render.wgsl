@@ -51,7 +51,7 @@ struct VertexOutput {
 
   // Quad-Größe abhängig von verbleibender Lebenszeit
   // Flammen sind anfangs klein und werden während des Aufstiegs größer
-  let quadSize = 0.5 + 0.05 * life;
+  let quadSize = 0.15 + 1.45 * life;
   let uv = quadVertices[vertexIndex];
   let quadVertex = uv * quadSize;
 
@@ -86,5 +86,11 @@ struct VertexOutput {
 
   // Weicher Abfall zum Rand hin
   let falloff = 1.0 - dist * dist;
-  return vec4<f32>(input.color.rgb * falloff, input.color.a * falloff);
+
+  // Extrem geringer Alpha-Faktor (0.05), weil sehr viele Partikel additiv übereinander gerendert werden.
+  // Aktuell wird direkt in den Framebuffer (rgba8unorm) gerendert, was "nur" 8 Bit pro Kanal bietet.
+  // Für Partikel wären 32-Bit pro Kanal (rgba32float) ideal, wenn der Hintergrund in einen
+  // eigene Textur gerendert wird, danach die Partikel in eine 32-Bit-Textur mit Alpha
+  // und zum Schluss in einem Composing mit Tone Mapping die Partikel über den Hintergrund gelegt werden.
+  return vec4<f32>(input.color.rgb * falloff, input.color.a * falloff * 0.05);
 }

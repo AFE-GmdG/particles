@@ -744,11 +744,12 @@ async function initializeParticles2() {
   });
 
   const modelMatrix = new Matrix4();
-  const position = new Vector3(50, 0, 0);
+  const position = new Vector3(0, 0, 0);
   const rotation = new Quaternion();
   const scale = new Vector3(1, 1, 1);
   const up = new Vector3(0, 1, 0);
   modelMatrix.compose(position, rotation, scale);
+  modelMatrix.prettyPrint("Campfire 1");
 
   let modelMapping = new Float32Array(campfire1MatrixBuffer.getMappedRange());
   modelMapping[0x0] = modelMatrix.m11;
@@ -772,9 +773,10 @@ async function initializeParticles2() {
   modelMapping[0xf] = modelMatrix.m44;
   campfire1MatrixBuffer.unmap();
 
-  position.set(-50, 0, 0);
+  position.set(-50, 0, 40);
   rotation.setFromAxisAngle(up, deg2rad(-20));
   modelMatrix.compose(position, rotation, scale);
+  modelMatrix.prettyPrint("Campfire 2");
 
   modelMapping = new Float32Array(campfire2MatrixBuffer.getMappedRange());
   modelMapping[0x0] = modelMatrix.m11;
@@ -798,10 +800,10 @@ async function initializeParticles2() {
   modelMapping[0xf] = modelMatrix.m44;
   campfire2MatrixBuffer.unmap();
 
-  position.set(50, 0, 0);
+  position.set(50, 0, 20);
   rotation.setFromAxisAngle(up, deg2rad(30));
-  scale.set(2, 2, 2);
   modelMatrix.compose(position, rotation, scale);
+  modelMatrix.prettyPrint("Campfire 3");
 
   modelMapping = new Float32Array(campfire3MatrixBuffer.getMappedRange());
   modelMapping[0x0] = modelMatrix.m11;
@@ -1166,8 +1168,8 @@ function updateParticles(deltaTime: number) {
   simConfigView.setUint32(12, PARTICLE_2_COUNT, true);   // particleCount
   simConfigView.setFloat32(16, 1.0, true);               // buoyancy
   simConfigView.setFloat32(20, 0.25, true);              // drag
-  simConfigView.setFloat32(24, 15, true);                // spawnRadius
-  simConfigView.setFloat32(28, 5, true);                 // spawnHeight
+  simConfigView.setFloat32(24, 5.0, true);              // spawnRadius
+  simConfigView.setFloat32(28, 0.05, true);              // spawnHeight
 
   context.device.queue.writeBuffer(
     context.particle2SimConfigBuffer,
@@ -1299,6 +1301,15 @@ async function main() {
     warmupPass.setBindGroup(0, context.particle1SimBindGroup);
     warmupPass.dispatchWorkgroups(Math.ceil(PARTICLE_1_COUNT / 256));
     warmupPass.end();
+
+    const warmupPass2 = commandEncoder.beginComputePass({
+      label: `Warmup Compute Pass 2 (Step ${i + 1}/${warmupSteps})`,
+    });
+    warmupPass2.setPipeline(context.particle2SimPipeline);
+    warmupPass2.setBindGroup(0, context.particle2SimBindGroup);
+    warmupPass2.dispatchWorkgroups(Math.ceil(PARTICLE_2_COUNT / 256));
+    warmupPass2.end();
+
     context.device.queue.submit([commandEncoder.finish()]);
   }
 

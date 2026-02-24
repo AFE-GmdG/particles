@@ -275,25 +275,25 @@ class Matrix4 {
 
     const sx = scale.x, sy = scale.y, sz = scale.z;
 
-    this.#elements[0] = (1 - (yy + zz)) * sx;
-    this.#elements[1] = (xy + wz) * sx;
-    this.#elements[2] = (xz - wy) * sx;
-    this.#elements[3] = 0;
+    this.#elements[0x0] = (1 - (yy + zz)) * sx;
+    this.#elements[0x1] = (xy - wz) * sy;
+    this.#elements[0x2] = (xz + wy) * sz;
+    this.#elements[0x3] = position.x;
 
-    this.#elements[4] = (xy - wz) * sy;
-    this.#elements[5] = (1 - (xx + zz)) * sy;
-    this.#elements[6] = (yz + wx) * sy;
-    this.#elements[7] = 0;
+    this.#elements[0x4] = (xy + wz) * sx;
+    this.#elements[0x5] = (1 - (xx + zz)) * sy;
+    this.#elements[0x6] = (yz - wx) * sz;
+    this.#elements[0x7] = position.y;
 
-    this.#elements[8] = (xz + wy) * sz;
-    this.#elements[9] = (yz - wx) * sz;
-    this.#elements[10] = (1 - (xx + yy)) * sz;
-    this.#elements[11] = 0;
+    this.#elements[0x8] = (xz - wy) * sx;
+    this.#elements[0x9] = (yz + wx) * sy;
+    this.#elements[0xa] = (1 - (xx + yy)) * sz;
+    this.#elements[0xb] = position.z;
 
-    this.#elements[12] = position.x;
-    this.#elements[13] = position.y;
-    this.#elements[14] = position.z;
-    this.#elements[15] = 1;
+    this.#elements[0xc] = 0;
+    this.#elements[0xd] = 0;
+    this.#elements[0xe] = 0;
+    this.#elements[0xf] = 1;
 
     return this;
   }

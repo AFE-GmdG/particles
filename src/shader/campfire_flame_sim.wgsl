@@ -1,5 +1,3 @@
-// Lagerfeur-Flammen-Simulationsshader (Compute)
-
 struct SimConfig {
   deltaTime: f32,
   time: f32,
@@ -65,8 +63,8 @@ fn simulate(@builtin(global_invocation_id) id: vec3<u32>) {
     );
 
     // Initiale Geschwindigkeit: Starke Aufwärtskomponente + kleine horizontale Streuung
-    let upwardSpeed = randomRange(seed + 2u, 20.0, 80.0);
-    let horizontalSpread = randomRange(seed + 3u, 2.0, 8.0);
+    let upwardSpeed = randomRange(seed + 2u, -10.0, 40.0);
+    let horizontalSpread = randomRange(seed + 3u, 5.0, 15.0);
     let spreadAngle = randomRange(seed + 4u, 0.0, 6.28318530718);
 
     particle.velocity = vec3<f32>(
@@ -88,7 +86,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3<u32>) {
     particle.position += particle.velocity * config.deltaTime;
 
     // Alter erhöhen
-    particle.age += config.deltaTime;
+    particle.age += config.deltaTime; // * 0.1;
   }
 
   particles[index] = particle;
